@@ -134,7 +134,7 @@ dataset_images = "D:/documents/programming/projects/image captioning/ImageCaptio
 #with open("D:/documents/programming/projects/image captioning/ImageCaptionGenerator/features.p", "wb") as file:
 #    dump(features, file)
 
-features = open("D:/documents/programming/projects/image captioning/ImageCaptionGenerator/features.p", "rb")
+features = load(open("D:/documents/programming/projects/image captioning/ImageCaptionGenerator/features.p", "rb"))
 
 def load_photos(filename):
     file = load_doc(filename)
@@ -150,4 +150,41 @@ def load_clean_descriptions(filename,photos):
         if len(words) < 1:
             continue
 
-        
+        image, image_caption = words[0], words[1:]
+        if image in photos:
+            if image not in descriptions:
+                descriptions[image] = []
+            desc = '<start> ' + " ".join(image_caption) + ' <end>'
+            descriptions[image].append(desc)
+    return descriptions
+
+def load_features(photos):
+    all_features = load(open("D:/documents/programming/projects/image captioning/ImageCaptionGenerator/features.p","rb"))
+    features = {k: all_features[k] for k in photos if k in all_features and k.strip() != ''}
+    print(features)
+    return features
+
+filename = 'D:/documents/programming/projects/image captioning/ImageCaptionGenerator/Flickr8k_text/Flickr_8k.trainImages.txt'
+
+train_imgs = load_photos(filename)
+train_descriptions = load_clean_descriptions("D:/documents/programming/projects/image captioning/ImageCaptionGenerator/descriptions.txt",train_imgs)
+train_features = load_features(train_imgs)
+
+def dict_to_list(descriptions):
+    all_desc = []
+    for key in descriptions.keys():
+        [all_desc.append(d) for d in descriptions[key]]
+    return all_desc
+
+def create_tokenizer(descriptions):
+    desc_list = dict_to_list(descriptions)
+    tokenizer = Tokenizer()
+    tokenizer.fit_on_texts(desc_list)
+    return tokenizer
+
+tokenizer = create_tokenizer(train_descriptions)
+
+dump(tokenizer, open("D:/documents/programming/projects/image captioning/ImageCaptionGenerator/tokenizer.p",'wb'))
+
+vocab_size = len(tokenizer.word_index) + 1
+print(vocab_size)
