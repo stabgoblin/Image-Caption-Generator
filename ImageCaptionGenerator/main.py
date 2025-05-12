@@ -188,3 +188,90 @@ dump(tokenizer, open("D:/documents/programming/projects/image captioning/ImageCa
 
 vocab_size = len(tokenizer.word_index) + 1
 print(vocab_size)
+
+def max_length(descriptions):
+    desc_list = dict_to_list(descriptions)
+    return max(len(d.split()) for d in desc_list)
+
+max_length = max_length(train_descriptions)
+print(max_length)
+
+def data_generator(descriptions, features, tokenizer, max_length):
+    def generator():
+        while True:
+            for key, description_list in descriptions.items():
+                feature = features[key][0]
+                input_image, input_sequence, output_word = create_sequences(tokenizer, max_length, description_list, feature)
+                for i in range(len(input_image)):
+                    yield {'input_1': input_image[i], 'input_2': input_sequence[i]}, output_word[i]
+    
+    # Define the output signature for the generator
+    output_signature = (
+        {
+            'input_1': tf.TensorSpec(shape=(2048,), dtype=tf.float32),
+            'input_2': tf.TensorSpec(shape=(max_length,), dtype=tf.int32)
+        },
+        tf.TensorSpec(shape=(vocab_size,), dtype=tf.float32)
+    )
+    
+    # Create the dataset
+    dataset = tf.data.Dataset.from_generator(
+        generator,
+        output_signature=output_signature
+    )
+    
+    return dataset.batch(32)
+
+def create_sequences(tokenizer, max_length, desc_list, feature):
+    X1, X2, y = list(), list(), list()
+    # walk through each description for the image
+    for desc in desc_list:
+        # encode the sequence
+        seq = tokenizer.texts_to_sequences([desc])[0]
+        # split one sequence into multiple X,y pairs
+        for i in range(1, len(seq)):
+            # split into input and output pair
+            in_seq, out_seq = seq[:i], seq[i]
+            # pad input sequence
+            in_seq = pad_sequences([in_seq], maxlen=max_length)[0]
+            # encode output sequence
+            out_seq = to_categorical([out_seq], num_classes=vocab_size)[0]
+            # store
+            X1.append(feature)
+            X2.append(in_seq)
+            y.append(out_seq)
+    return np.array(X1), np.array(X2), np.array(y)
+
+dataset = data_generator(train_descriptions, features, tokenizer, max_length)
+for (a,b) in dataset.take(1):
+    print(a['input_1'].shape, a['input_2'].shape,b.shape)
+    break
+
+def define_model(vocab_size, max_length):
+    #CNN model from 2048 nodes to 256 nodes
+    inputs1 = Input(shape = (2048,), name = 'input_1')
+    fe1 = Dropout(0.5)(inputs1)
+    fe2 = Dense(256, activation = 'relu')(fe1)
+
+    #lstm sequence model
+    inputs2 = Input(shape = (max_length,),name = 'input_2')
+    se1 = Embedding(vocab_size,256, mask_zero = True)(inputs2)
+    se2 = Dropout(0.5)(se1)
+    se3 = LSTM(256)(se2)
+
+    decoder1 = add([fe2,se3])
+    decoder2 = Dense(256, activation = 'relu')(decoder1)
+    outputs = Dense(vocab_size, activation = 'softmax')(decoder2)
+    model = Model(inputs = [inputs1, inputs2], outputs = outputs)
+
+    model.compile(loss = 'categorical_crossentropy', optimizer = 'adam')    
+    print(model.summary())
+    return model
+
+model = define_model(vocab_size, max_length)
+
+os.mkdir('D:/documents/programming/projects/image captioning/ImageCaptionGenerator/models')
+for i in range(10):
+    dataset = data_generator(train_descriptions, train_features, tokenizer, max_length)
+    model.fit(dataset, epochs = 10, steps_per_epoch = 5, verbose = 1)
+    model.save("D:/documents/programming/projects/image captioning/ImageCaptionGenerator/models/model_" + str(i) + ".h5")
